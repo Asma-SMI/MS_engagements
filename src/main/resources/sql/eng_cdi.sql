@@ -1,0 +1,113 @@
+
+SELECT
+    (SELECT i.CODE_SERVICE
+       FROM IMAGE_CREDOC_IMP i
+      WHERE i.NUM_DOSSIER = d.NUM_DOSSIER
+    ) AS CODE_SERVICE,
+
+    d.NUM_DOSSIER,
+    TO_CHAR(d.DATE_DOSSIER, 'YYYYMMDD') AS DATE_DOSSIER,
+
+    (SELECT NVL(i.CREDIT_STAND_BY, ' ')
+       FROM IMAGE_CREDOC_IMP i
+      WHERE i.NUM_DOSSIER = d.NUM_DOSSIER
+    ) AS CREDIT_STAND_BY,
+
+    d.TYPE_PIECE_CLIENT,
+    d.NO_PIECE_CLIENT,
+
+    d.CODE_AGENCE_BCT,
+    d.CODE_AGENCE_BNA,
+    d.COMPTE_GENERAL,
+    d.SOUS_COMPTE,
+    d.CLE_RIB,
+
+    TO_CHAR(d.DATE_VALIDITE, 'YYYYMMDD')
+        AS DATE_VALIDITE1,
+
+    TO_CHAR(d.DATE_VALIDITE, 'YYYYMMDD')
+        AS DATE_VALIDITE2,
+
+    d.CODE_DEVISE,
+
+    ROUND(d.MNT_DEVISE, s.DECIMAL_DEVISE)
+        * DECODE(s.DECIMAL_DEVISE,
+            0, 1, 1, 10, 2, 100, 3, 1000, 1
+          ) AS MNT_DEVISE,
+
+    ROUND(NVL(d.MNT_ENGAGEMENT, 0), s.DECIMAL_DEVISE)
+        * DECODE(s.DECIMAL_DEVISE,
+            0, 1, 1, 10, 2, 100, 3, 1000, 1
+          ) AS MNT_ENGAGEMENT,
+
+    ROUND(NVL(d.MNT_REGLE, 0), s.DECIMAL_DEVISE)
+        * DECODE(s.DECIMAL_DEVISE,
+            0, 1, 1, 10, 2, 100, 3, 1000, 1
+          ) AS MNT_REGLE,
+
+    ROUND(NVL(d.MNT_ANNULE, 0), s.DECIMAL_DEVISE)
+        * DECODE(s.DECIMAL_DEVISE,
+            0, 1, 1, 10, 2, 100, 3, 1000, 1
+          ) AS MNT_ANNULE,
+
+    ROUND(NVL(d.MNT_ENCOURS, 0), s.DECIMAL_DEVISE)
+        * DECODE(s.DECIMAL_DEVISE,
+            0, 1, 1, 10, 2, 100, 3, 1000, 1
+          ) AS MNT_ENCOURS,
+
+    ROUND(NVL(d.MNT_BLOCAGE, 0), s.DECIMAL_DEVISE)
+        * DECODE(s.DECIMAL_DEVISE,
+            0, 1, 1, 10, 2, 100, 3, 1000, 1
+          ) AS MNT_BLOCAGE,
+
+    ROUND(
+        NVL(d.MNT_BLOCAGE_PROFESS, 0),
+        s.DECIMAL_DEVISE
+    ) * DECODE(s.DECIMAL_DEVISE,
+            0, 1, 1, 10, 2, 100, 3, 1000, 1
+        ) AS MNT_BLOCAGE_PROFESS,
+
+    d.ENGAGER_OUI_NON,
+
+    ROUND(
+        NVL(
+            d.MNT_ENCOURS * s.COURS_FIXE
+            / s.UNITE_DEVISE,
+            0
+        ), 3
+    ) * 1000 AS MNT_TND,
+
+    ROUND(NVL(s.COURS_FIXE, 0), 6)
+        AS COURS_FIXE
+
+FROM ENGAGEMENT_CLIENT_DET d
+JOIN DEVISE s
+    ON d.CODE_DEVISE = s.CODE_DEVISE
+
+WHERE d.DATE_COMPTABILISATION <= :dateArrete
+
+  AND NVL(d.MNT_ENCOURS, 0) <> 0
+
+  -- Filtre statut C volontairement desactive
+  -- AND NOT EXISTS (
+  --     SELECT 1
+  --     FROM IMAGE_CREDOC_IMP i
+  --     WHERE NVL(i.STATUS, 'X') = 'C'
+  --       AND i.NUM_DOSSIER = d.NUM_DOSSIER
+  -- )
+
+  AND (
+      TO_CHAR(d.DATE_COMPTABILISATION, 'RRMMDD')
+      || TO_CHAR(d.DATE_VALIDATION, 'RRMMDDHH24MISS')
+  ) IN (
+      SELECT MAX(
+          TO_CHAR(e.DATE_COMPTABILISATION, 'RRMMDD')
+          || TO_CHAR(e.DATE_VALIDATION, 'RRMMDDHH24MISS')
+      )
+      FROM ENGAGEMENT_CLIENT_DET e
+      WHERE e.NUM_DOSSIER = d.NUM_DOSSIER
+        AND e.DATE_DOSSIER = d.DATE_DOSSIER
+        AND e.DATE_COMPTABILISATION <= :dateArrete
+  )
+
+ORDER BY d.CODE_AGENCE_BNA
